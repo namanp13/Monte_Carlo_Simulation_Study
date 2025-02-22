@@ -1,0 +1,768 @@
+---
+title: "ST502Project"
+output: pdf_document
+date: "2024-09-29"
+---
+
+libraries
+```{r}
+library(ggplot2)
+library(tidyverse)
+```
+
+
+Global variables
+```{r}
+# Set parameters and define variables for global use
+set.seed(42)
+N <- 1000  # samples
+p_vals <- seq(0.01, 0.99, length.out = 15)  # Range of true probabilities
+alpha <- 0.05  # Significance level
+B <- 100  # Number of bootstrap samples
+z <- qnorm(1 - alpha / 2)  # z value
+```
+
+Wald
+```{r}
+
+waldCI <- function(y, n, alpha = 0.05) {
+  if (y == 0) return(c(0, 0)) 
+  if (y == n) return(c(1, 1)) 
+  
+  p_hat <- y / n
+  error <- z * sqrt((p_hat * (1 - p_hat)) / n)
+  return(c(p_hat - error, p_hat + error))
+}
+
+# Function to check if the true probability is within the confidence interval
+check_coverage <- function(ci, p) {
+  return(p >= ci[1] & p <= ci[2])
+}
+
+# Main function for simulation and coverage calculation
+simulate_confidence_intervals <- function(N, n, alpha) {
+  coverage_results <- list() 
+
+  for (p in p_vals) {
+    y_samples <- rbinom(N, size = n, prob = p) 
+    ci_wald <- t(sapply(y_samples, waldCI, n = n, alpha = alpha))
+    wald_coverage <- mean(apply(ci_wald, 1, check_coverage, p = p))
+    
+    coverage_results[[as.character(p)]] <- data.frame(
+      p = p,
+      coverage = wald_coverage,
+      method = "Wald"
+    )
+  }
+
+  # Combine all results into a single data frame
+  coverage_results_df <- do.call(rbind, coverage_results)
+  
+  return(coverage_results_df)
+}
+
+# Sample sizes to iterate over
+n_values <- c(15, 30, 100)  
+
+# Loop through each sample size and create separate plots
+for (n in n_values) {
+
+  wald_coverage_results <- simulate_confidence_intervals(N, n)
+
+  # Plot the coverage probabilities for the Wald interval
+p_plot <- 
+  ggplot(wald_coverage_results, aes(x = p, y = coverage)) +
+    geom_line(color = "blue", size = 1.2) +
+    labs(title = paste("Wald Interval Coverage Probability for n =", n),
+         x = "True Probability (p)",
+         y = "Coverage Probability") +
+    ylim(0.7, 1.0) +
+    geom_hline(yintercept = 0.95, linetype = "dashed", color = "red") + 
+    theme_minimal() +
+    theme(legend.position = "none",
+    panel.background = element_rect(fill = "white", color = "white"), 
+          plot.background = element_rect(fill = "white", color = "white"))
+
+  # Save the plot as a PNG file
+  ggsave(filename = paste("wald_coverage_n_", n, ".png", sep = ""), plot = p_plot, width = 8, height = 6)
+}
+
+```
+
+Adjusted Wald
+```{r}
+
+AwaldCI <- function(y, n, alpha) {
+  p <- (y + 2) / (n + 4)
+  ci <- c(p - z * sqrt(p * (1 - p) / (n + 4)), 
+          p + z * sqrt(p * (1 - p) / (n + 4)))
+  return(ci)
+}
+
+# Function to check if the true probability is within the confidence interval
+check_coverage <- function(ci, p) {
+  return(p >= ci[1] & p <= ci[2])
+}
+
+# Main function for simulation and coverage calculation
+simulate_Awald_intervals <- function(N, n, alpha) {
+  coverage_results <- list()
+
+  for (p in p_vals) {
+    y_samples <- rbinom(N, size = n, prob = p) 
+    ci_Awald <- t(sapply(y_samples, AwaldCI, n = n, alpha = alpha))
+    Awald_coverage <- mean(apply(ci_Awald, 1, check_coverage, p = p))
+    
+    coverage_results[[as.character(p)]] <- data.frame(
+      p = p,
+      coverage = Awald_coverage,
+      method = "Adjusted Wald"
+    )
+  }
+
+  # Combine all results into a single data frame
+  coverage_results_df <- do.call(rbind, coverage_results)
+  
+  return(coverage_results_df)
+}
+
+# Sample sizes to iterate over
+n_values <- c(15, 30, 100)  
+
+# Loop through each sample size and create separate plots
+for (n in n_values) {
+
+  Awald_coverage_results <- simulate_Awald_intervals(N = 1000, n = n)
+
+  # Plot the coverage probabilities for the Adjusted Wald interval
+  library(ggplot2)
+
+p_plot <- ggplot(Awald_coverage_results, aes(x = p, y = coverage)) +
+    geom_line(color = "blue", size = 1.2) +
+    labs(title = paste("Adjusted Wald Interval Coverage Probability for n =", n),
+         x = "True Probability (p)",
+         y = "Coverage Probability") +
+    ylim(0.7, 1.0) +
+    geom_hline(yintercept = 0.95, linetype = "dashed", color = "red") + 
+    theme_minimal() +
+    theme(legend.position = "none",,
+    panel.background = element_rect(fill = "white", color = "white"),
+          plot.background = element_rect(fill = "white", color = "white"))
+
+  # Save the plot as a PNG file
+  ggsave(filename = paste("Awald_coverage_n_", n, ".png", sep = ""), plot = p_plot, width = 8, height = 6)
+}
+
+```
+
+Score
+```{r}
+scoreCI <- function(y, n, alpha) {
+  p <- y / n
+  ci <- c(
+    (p + z^2 / (2 * n) - z * sqrt((p * (1 - p) + z^2 / (4 * n)) / n)) / (1 + z^2 / n),
+    (p + z^2 / (2 * n) + z * sqrt((p * (1 - p) + z^2 / (4 * n)) / n)) / (1 + z^2 / n)
+  )
+  return(ci)
+}
+
+# Function to check if the true probability is within the confidence interval
+check_coverage <- function(ci, p) {
+  return(p >= ci[1] & p <= ci[2])
+}
+
+# Main function for simulation and coverage calculation
+simulate_score_intervals <- function(N, n, alpha ) {
+  coverage_results <- list()
+
+  for (p in p_vals) {
+    y_samples <- rbinom(N, size = n, prob = p) 
+    ci_score <- t(sapply(y_samples, scoreCI, n, alpha))
+    score_coverage <- mean(apply(ci_score, 1, check_coverage, p = p))
+    
+    coverage_results[[as.character(p)]] <- data.frame(
+      p = p,
+      coverage = score_coverage,
+      method = "Score"
+    )
+  }
+
+  # Combine all results into a single data frame
+  coverage_results_df <- do.call(rbind, coverage_results)
+  
+  return(coverage_results_df)
+}
+
+# Sample sizes to iterate over
+n_values <- c(15, 30, 100)  
+
+# Loop through each sample size and create separate plots
+for (n in n_values) {
+
+  score_coverage_results <- simulate_score_intervals(N , n )
+
+  # Plot the coverage probabilities for the Score interval
+  library(ggplot2)
+
+  p_plot <- ggplot(score_coverage_results, aes(x = p, y = coverage)) +
+    geom_line(color = "green", size = 1.2) +
+    labs(title = paste("Score Interval Coverage Probability for n =", n),
+         x = "True Probability (p)",
+         y = "Coverage Probability") +
+    ylim(0.7, 1.0) +
+    geom_hline(yintercept = 0.95, linetype = "dashed", color = "red") +  
+    theme_minimal() +
+    theme(legend.position = "none",,
+    panel.background = element_rect(fill = "white", color = "white"), 
+          plot.background = element_rect(fill = "white", color = "white"))
+
+  # Save the plot as a PNG file
+  ggsave(filename = paste("score_coverage_n_", n, ".png", sep = ""), plot = p_plot, width = 8, height = 6)
+}
+```
+
+Clopper Pearson (Exact)
+```{r}
+exactCI <- function(y, n, alpha) {
+  if (y == 0) return(c(0, 1 - (alpha / 2)^(1/n)))
+  if (y == n) return(c((alpha / 2)^(1/n), 1))
+  
+  lower <- 1 / (1 + (n - y + 1) / (y * qf(1 - alpha / 2, 2 * y, 2 * (n - y + 1), lower.tail = FALSE)))
+  upper <- 1 / (1 + (n - y) / ((y + 1) * qf(alpha / 2, 2 * (y + 1), 2 * (n - y), lower.tail = FALSE)))
+  
+  return(c(lower, upper))
+}
+
+# Function to check if the true probability is within the confidence interval=
+check_coverage <- function(ci, p) {
+  return(p >= ci[1] & p <= ci[2])
+}
+
+# Main function for simulation and coverage calculation
+simulate_exact_intervals <- function(N, n, alpha) {
+  coverage_results <- list()
+
+  for (p in p_vals) {
+    y_samples <- rbinom(N, size = n, prob = p)
+    ci_exact <- t(sapply(y_samples, exactCI, n, alpha))
+    exact_coverage <- mean(apply(ci_exact, 1, check_coverage, p = p))
+    
+    coverage_results[[as.character(p)]] <- data.frame(
+      p = p,
+      coverage = exact_coverage,
+      method = "Exact"
+    )
+  }
+
+    # Combine all results into a single data frame
+  coverage_results_df <- do.call(rbind, coverage_results)
+  return(coverage_results_df)
+}
+
+#Iterate over values of n
+n_values <- c(15, 30, 100)
+
+coverage_list <- list()
+
+# Loop through each sample size and create separate plots
+for (n in n_values) {
+  exact_coverage_results <- simulate_exact_intervals(N, n, alpha)
+  coverage_list[[as.character(n)]] <- exact_coverage_results
+  
+  library(ggplot2)
+
+  p_plot <- ggplot(exact_coverage_results, aes(x = p, y = coverage)) +
+    geom_line(color = "purple", size = 1.2) +
+    labs(title = paste("Exact Interval (Clopper-Pearson) Coverage Probability for n =", n),
+         x = "True Probability (p)",
+         y = "Coverage Probability") +
+    ylim(0.7, 1.0) +
+    geom_hline(yintercept = 0.95, linetype = "dashed", color = "red") +
+    theme_minimal() +
+    theme(legend.position = "none",
+          panel.background = element_rect(fill = "white", color = "white"),
+          plot.background = element_rect(fill = "white", color = "white"))
+
+    # Save the plot as a PNG file
+  ggsave(filename = paste("exact_coverage_n_", n, ".png", sep = ""), plot = p_plot, width = 8, height = 6)
+}
+```
+
+Bootstrap based Intervals for raw
+```{r}
+bootstrap_percentileCI <- function(y, n, B , alpha) {
+  # Special cases
+  if (y == 0) return(list(percentile = c(0, 0)))
+  if (y == n) return(list(percentile = c(1, 1)))
+  
+  p_hat <- y / n
+  # Generate bootstrap samples for the mean
+  boot_samples <- replicate(B, mean(rbinom(n, size = 1, prob = p_hat)))
+  
+  # Percentile-based confidence interval
+  ci_percentile <- quantile(boot_samples, probs = c(alpha / 2, 1 - alpha / 2), na.rm = TRUE)
+  
+  # Return the confidence interval as a named list
+  return(list(percentile = ci_percentile))
+}
+
+# Function to check coverage
+check_coverage <- function(ci, p) {
+  return(p >= ci[1] & p <= ci[2])
+}
+
+# Main function for Bootstrap Percentile interval
+simulate_bootstrap_percentile_intervals <- function(N , n, alpha , B ) {
+  coverage_results <- list()
+
+  for (p in p_vals) {
+    y_samples <- rbinom(N, size = n, prob = p)
+    
+    ci_percentile_list <- vector("list", length(y_samples))
+    
+    for (i in seq_along(y_samples)) {
+      ci_percentile_list[[i]] <- bootstrap_percentileCI(y_samples[i], n, B = B, alpha = alpha)$percentile
+    }
+    
+    ci_percentile_matrix <- do.call(rbind, ci_percentile_list)
+    percentile_coverage <- mean(apply(ci_percentile_matrix, 1, check_coverage, p = p))
+    
+    coverage_results[[as.character(p)]] <- data.frame(
+      p = p,
+      coverage = percentile_coverage,
+      method = "Bootstrap Percentile"
+    )
+  }
+
+  # Combine all results into a single data frame
+  coverage_results_df <- do.call(rbind, coverage_results)
+  
+  return(coverage_results_df)
+}
+
+# Sample sizes to iterate over
+n_values <- c(15, 30, 100)
+
+# Loop through each sample size and create separate plots
+for (n in n_values) {
+  bootstrap_percentile_results <- simulate_bootstrap_percentile_intervals(N , n, alpha, B )
+
+  p_plot <- ggplot(bootstrap_percentile_results, aes(x = p, y = coverage)) +
+    geom_line(color = "orange", size = 1.2) +
+    labs(title = paste("Bootstrap Percentile Interval Coverage Probability for n =", n),
+         x = "True Probability (p)",
+         y = "Coverage Probability") +
+    ylim(0.7, 1.0) +
+    geom_hline(yintercept = 0.95, linetype = "dashed", color = "red") + 
+    theme_minimal() +
+    theme(legend.position = "none",
+    panel.background = element_rect(fill = "white", color = "white"),
+          plot.background = element_rect(fill = "white", color = "white"))
+
+  # Save the plot as a PNG file
+  ggsave(filename = paste("bootstrap_percentile_coverage_n_", n, ".png", sep = ""), plot = p_plot, width = 8, height = 6)
+}
+```
+
+Bootstrap t Interval
+```{r}
+# Define the Bootstrap T-interval function
+bootstrap_tCI <- function(y, n, B, alpha) {
+  if (y == 0) return(c(0, 0))
+  if (y == n) return(c(1, 1))
+  
+  p_hat <- y / n
+  # Generate bootstrap samples
+  boot_samples <- replicate(B, mean(rbinom(n, size = 1, prob = p_hat)))
+  
+  # Compute t-statistics
+  t_stat <- (boot_samples - p_hat) / sqrt((p_hat * (1 - p_hat)) / n)
+  
+  # T-interval confidence interval
+  ci_t <- p_hat + quantile(t_stat, probs = c(alpha / 2, 1 - alpha / 2), na.rm = TRUE) * sqrt((p_hat * (1 - p_hat)) / n)
+  
+  return(ci_t)
+}
+
+# Function to check if true probability is within the confidence interval
+check_coverage <- function(ci, p) {
+  return(ci[1] <= p && ci[2] >= p)
+}
+
+# Dataframe to store the n values
+bootstrap_t_results <- data.frame()
+
+# Sample sizes to iterate over
+n_values <- c(15, 30, 100)
+
+# Bootstrap T-Interval Coverage Simulation for each n
+for (n in n_values) {
+  for (p in p_vals) {
+    y_samples <- rbinom(B, size = n, prob = p)
+    
+    ci_t_intervals <- t(sapply(y_samples, bootstrap_tCI, n = n, B, alpha = alpha))
+    
+    # Check coverage for each p
+    t_interval_coverage <- mean(sapply(1:nrow(ci_t_intervals), function(i) {
+      check_coverage(ci_t_intervals[i, ], p)
+    }))
+    
+    # Store results for bootstrap t-interval
+    bootstrap_t_results <- rbind(bootstrap_t_results, data.frame(
+      p = p,
+      coverage = t_interval_coverage,
+      method = "bootstrap_t_interval",
+      n = n
+    ))
+  }
+}
+
+for (n in n_values) {
+  plot_data <- subset(bootstrap_t_results, n == n)
+  
+  # Plot for Bootstrap T-Interval
+  p_plot <- ggplot(plot_data, aes(x = p, y = coverage, color = method, linetype = method)) +
+    geom_line(size = 1.2) +
+    labs(title = paste("Bootstrap T-Interval Coverage (n =", n, ")"),
+         x = "True Probability (p)",
+         y = "Coverage Probability") +
+    geom_hline(yintercept = 0.95, linetype = "dashed", color = "red") + 
+    theme_minimal() + ylim(0.7, 1.0) +
+    theme(legend.position = "bottom",
+          panel.background = element_rect(fill = "white", color = "white"),
+          plot.background = element_rect(fill = "white", color = "white"))
+   # Save the plot as a PNG file
+  ggsave(filename = paste("bootstrap_t_coverage_n_", n, ".png", sep = ""), plot = p_plot, width = 8, height = 6)
+}
+```
+
+Proportion that miss above or below for bootstrapped
+```{r}
+# Function to check coverage details
+check_coverage_details <- function(ci, p) {
+  if (p >= ci[1] & p <= ci[2]) {
+    return(c(capture = 1, miss_above = 0, miss_below = 0))  # Captures the true value
+  } else if (p < ci[1]) {
+    return(c(capture = 0, miss_above = 1, miss_below = 0))  # Misses above
+  } else {
+    return(c(capture = 0, miss_above = 0, miss_below = 1))  # Misses below
+  }
+}
+
+
+# Data frame for results
+bootstrap_coverage_results <- data.frame()
+
+# Function for Bootstrap t Interval
+bootstrap_tCI <- function(y, n, B, alpha) {
+  if (y == 0) return(c(0, 0))
+  if (y == n) return(c(1, 1))
+  
+  p_hat <- y / n
+  # Generate bootstrap samples
+  boot_samples <- replicate(B, mean(rbinom(n, size = 1, prob = p_hat)))
+  
+  # Compute t-statistics
+  t_stat <- (boot_samples - p_hat) / sqrt((p_hat * (1 - p_hat)) / n)
+  
+  # T-interval confidence interval
+  ci_t <- p_hat + quantile(t_stat, probs = c(alpha / 2, 1 - alpha / 2), na.rm = TRUE) * sqrt((p_hat * (1 - p_hat)) / n)
+  
+  return(ci_t)
+}
+
+# Generate samples and compute coverage probabilities for both bootstrap methods
+for (p in p_vals) {
+  y_samples <- rbinom(B, size = n, prob = p)  # Generate random samples
+  
+  # Calculate bootstrap CIs for percentile
+  ci_bootstrap_percentile <- lapply(y_samples, bootstrap_percentileCI, n = n, B = B, alpha = alpha)
+  ci_percentile <- do.call(rbind, lapply(ci_bootstrap_percentile, function(x) x$percentile))
+  
+  # Calculate bootstrap CIs for t interval
+  ci_bootstrap_t <- t(sapply(y_samples, bootstrap_tCI, n = n, B = B, alpha = alpha))
+  
+  # Coverage and miss probabilities for percentile intervals
+  percentile_coverage_details <- t(apply(ci_percentile, 1, check_coverage_details, p = p))
+  percentile_coverage <- colMeans(percentile_coverage_details)
+  
+  # Coverage and miss probabilities for t intervals
+  t_coverage_details <- t(apply(ci_bootstrap_t, 1, check_coverage_details, p = p))
+  t_coverage <- colMeans(t_coverage_details)
+  
+  # Store the results for both methods
+  bootstrap_coverage_results <- rbind(bootstrap_coverage_results, 
+                                      data.frame(
+                                        p = p,
+                                        coverage = percentile_coverage[1],  # 
+                                        miss_above = percentile_coverage[2],  
+                                        miss_below = percentile_coverage[3],  
+                                        method = "bootstrap_percentile"
+                                      ),
+                                      data.frame(
+                                        p = p,
+                                        coverage = t_coverage[1],
+                                        miss_above = t_coverage[2], 
+                                        miss_below = t_coverage[3], 
+                                        method = "bootstrap_t_interval"
+                                      ))
+}
+
+
+bootstrap_coverage_results
+
+```
+
+Proportion that miss above and below for Wald
+```{r}
+# Data frame for Wald
+wald_coverage_results <- data.frame()
+
+# Loop over the true probability values to compute coverage and miss rates for the Wald interval
+for (p in p_vals) {
+  y_samples <- rbinom(N, size = n, prob = p)  # Generate random samples
+  ci_wald <- t(sapply(y_samples, waldCI, n = n, alpha = alpha))  # Wald CI for each sample
+  
+  # Check coverage and proportion of misses for Wald intervals
+  wald_coverage_details <- t(apply(ci_wald, 1, check_coverage_details, p = p))
+  wald_coverage <- colMeans(wald_coverage_details)
+  
+  # Store the results for Wald Interval (without average length)
+  wald_coverage_results <- rbind(wald_coverage_results, data.frame(
+    p = p,
+    coverage = wald_coverage[1],  
+    miss_above = wald_coverage[2],  
+    miss_below = wald_coverage[3],  
+    method = "Wald"
+  ))
+}
+
+wald_coverage_results
+
+```
+
+Proportion that miss above and below for Adj Wald
+```{r}
+# Data Frame for Adj Wald
+Awald_coverage_results <- data.frame()
+
+# Loop over the true probability values to compute coverage and miss rates for the Adjusted Wald interval
+for (p in p_vals) {
+  y_samples <- rbinom(N, size = n, prob = p)
+  ci_Awald <- t(sapply(y_samples, AwaldCI, n = n, alpha = alpha))  
+  
+  # Check coverage and proportion of misses for Adjusted Wald intervals
+  Awald_coverage_details <- t(apply(ci_Awald, 1, check_coverage_details, p = p))
+  Awald_coverage <- colMeans(Awald_coverage_details)
+  
+  # Store the results for Adjusted Wald Interval (without average length)
+  Awald_coverage_results <- rbind(Awald_coverage_results, data.frame(
+    p = p,
+    coverage = Awald_coverage[1],  
+    miss_above = Awald_coverage[2], 
+    miss_below = Awald_coverage[3],  
+    method = "AWald"
+  ))
+}
+
+Awald_coverage_results
+```
+
+Proportion that miss above and below for Score
+```{r}
+# Data Frame for Score
+score_coverage_results <- data.frame()
+
+# Loop over the true probability values to compute coverage and miss rates for the Score interval
+for (p in p_vals) {
+  y_samples <- rbinom(N, size = n, prob = p) 
+  ci_score <- t(sapply(y_samples, scoreCI, n = n, alpha = alpha)) 
+  
+  # Check coverage and proportion of misses for Score intervals
+  score_coverage_details <- t(apply(ci_score, 1, check_coverage_details, p = p))
+  score_coverage <- colMeans(score_coverage_details)
+  
+  # Store the results for Score Interval (without average length)
+  score_coverage_results <- rbind(score_coverage_results, data.frame(
+    p = p,
+    coverage = score_coverage[1],  
+    miss_above = score_coverage[2],  
+    miss_below = score_coverage[3],  
+    method = "Score"
+  ))
+}
+
+score_coverage_results
+```
+
+Proportion that miss above and below for Clopper Pearson
+```{r}
+#Data frame for Exact
+exact_coverage_results <- data.frame()
+
+# Loop over the true probability values to compute coverage and miss rates for the Exact interval
+for (p in p_vals) {
+  y_samples <- rbinom(N, size = n, prob = p)  
+  ci_exact <- t(sapply(y_samples, exactCI, n = n, alpha = alpha)) 
+  
+  # Check coverage and proportion of misses for Exact intervals
+  exact_coverage_details <- t(apply(ci_exact, 1, check_coverage_details, p = p))
+  exact_coverage <- colMeans(exact_coverage_details)
+  
+  # Store the results for Clopper-Pearson (Exact) Interval (without average length)
+  exact_coverage_results <- rbind(exact_coverage_results, data.frame(
+    p = p,
+    coverage = exact_coverage[1],
+    miss_above = exact_coverage[2],  
+    miss_below = exact_coverage[3],  
+    method = "Exact"
+  ))
+}
+
+exact_coverage_results
+```
+
+Average widths 
+```{r}
+library(ggplot2)
+
+# Function to calculate average length of confidence intervals
+calculate_average_length <- function(N, n, alpha) {
+  lengths <- data.frame(p = numeric(), length = numeric(), method = character())
+  
+  for (p in p_vals) {
+    y_samples <- rbinom(N, size = n, prob = p)
+    
+    # Calculate lengths for each method
+    ci_wald <- t(sapply(y_samples, waldCI, n = n, alpha = alpha))
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_wald[, 2] - ci_wald[, 1], method = "Wald"))
+    
+    ci_Awald <- t(sapply(y_samples, AwaldCI, n = n, alpha = alpha))
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_Awald[, 2] - ci_Awald[, 1], method = "Adjusted Wald"))
+    
+    ci_score <- t(sapply(y_samples, scoreCI, n = n, alpha = alpha))
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_score[, 2] - ci_score[, 1], method = "Score"))
+    
+    ci_exact <- t(sapply(y_samples, exactCI, n = n, alpha = alpha))
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_exact[, 2] - ci_exact[, 1], method = "Exact"))
+    
+    ci_percentile <- sapply(y_samples, function(y) bootstrap_percentileCI(y, n, B, alpha)$percentile)
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_percentile[2, ] - ci_percentile[1, ], method = "Bootstrap Percentile"))
+    
+    ci_t <- sapply(y_samples, function(y) bootstrap_tCI(y, n, B, alpha))
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_t[2, ] - ci_t[1, ], method = "Bootstrap T"))
+  }
+  
+  # Calculate average lengths
+  average_lengths <- aggregate(length ~ p + method, data = lengths, FUN = mean)
+  
+  return(average_lengths)
+}
+
+# Sample sizes to iterate over
+n_values <- c(15, 30, 100)
+mean_lengths_results <- data.frame(method = character(), n_15 = numeric(), n_30 = numeric(), n_100 = numeric(), stringsAsFactors = FALSE)
+
+# Loop through each sample size and create plots
+for (n in n_values) {
+  average_lengths_results <- calculate_average_length(N, n = n, alpha)
+  
+ 
+  plot <- ggplot(average_lengths_results, aes(x = p, y = length, color = method)) +
+    geom_smooth(se = FALSE, size = 1.2) +
+    labs(title = paste("Average Length of Confidence Intervals for n =", n),
+         x = "True Probability (p)",
+         y = "Average Length of CIs") +
+    ylim(0.0, 0.5) +
+    scale_x_continuous(breaks = seq(0, 1, by = 0.25)) +
+    theme_minimal() +
+    theme(legend.position = "bottom",
+          panel.background = element_rect(fill = "white", color = "white"),
+          plot.background = element_rect(fill = "white", color = "white"))
+  
+  # Save the plot
+  ggsave(filename = paste("average_length_CI_n_", n, ".png", sep = ""), plot = plot, width = 8, height = 6)
+  
+  mean_lengths <- aggregate(length ~ method, data = average_lengths_results, FUN = mean)
+  mean_lengths_results <- merge(mean_lengths_results, mean_lengths, by = "method", all = TRUE)
+  colnames(mean_lengths_results)[n_values == n + 14] <- paste("n_", n, sep = "")
+}
+
+print(mean_lengths_results)
+
+
+```
+
+
+
+Calculate standard errors for average widths
+```{r}
+# Function to calculate average length and standard error of confidence intervals
+calculate_average_length_with_se <- function(N, n, alpha) {
+  lengths <- data.frame(p = numeric(), length = numeric(), method = character())
+  
+  for (p in p_vals) {
+    y_samples <- rbinom(N, size = n, prob = p)
+    
+    # Calculate lengths for each method
+    ci_wald <- t(sapply(y_samples, waldCI, n = n, alpha = alpha))
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_wald[, 2] - ci_wald[, 1], method = "Wald"))
+    
+    ci_Awald <- t(sapply(y_samples, AwaldCI, n = n, alpha = alpha))
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_Awald[, 2] - ci_Awald[, 1], method = "Adjusted Wald"))
+    
+    ci_score <- t(sapply(y_samples, scoreCI, n = n, alpha = alpha))
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_score[, 2] - ci_score[, 1], method = "Score"))
+    
+    ci_exact <- t(sapply(y_samples, exactCI, n = n, alpha = alpha))
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_exact[, 2] - ci_exact[, 1], method = "Exact"))
+    
+    ci_percentile <- sapply(y_samples, function(y) bootstrap_percentileCI(y, n, B, alpha)$percentile)
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_percentile[2, ] - ci_percentile[1, ], method = "Bootstrap Percentile"))
+    
+    ci_t <- sapply(y_samples, function(y) bootstrap_tCI(y, n, B, alpha))
+    lengths <- rbind(lengths, data.frame(p = p, length = ci_t[2, ] - ci_t[1, ], method = "Bootstrap T"))
+  }
+  
+  # Calculate average lengths and standard errors
+  average_lengths <- aggregate(length ~ method, data = lengths, FUN = mean)
+  standard_errors <- aggregate(length ~ method, data = lengths, FUN = function(x) sd(x) / sqrt(N))
+  
+  # Combine average lengths and standard errors
+  combined_results <- merge(average_lengths, standard_errors, by = "method")
+  colnames(combined_results) <- c("method", "avg_length", "se_length")
+  
+  return(combined_results)
+}
+
+# Initialize a table to store SE results with the correct structure
+se_table <- data.frame(Method = character(6), n_15 = numeric(6), n_30 = numeric(6), n_100 = numeric(6))
+
+# Sample sizes to iterate over
+n_values <- c(15, 30, 100)
+
+# Loop through each sample size and store the SE results
+for (n in n_values) {
+  results <- calculate_average_length_with_se(N, n = n, alpha)
+  
+  if (n == 15) {
+    se_table$n_15 <- results$se_length
+  } else if (n == 30) {
+    se_table$n_30 <- results$se_length
+  } else if (n == 100) {
+    se_table$n_100 <- results$se_length
+  }
+  
+
+  se_table$Method <- results$method
+}
+
+print(se_table)
+
+```
+
+
+
+
+
+
